@@ -23,6 +23,7 @@ import {
 import { useCustomAlert } from "../components/CustomAlert";
 import { useAdminTheme } from "../context/AdminThemeContext";
 import { supabase } from "../utils/supabase";
+import { generateProblemDescription } from "../utils/gemini";
 
 interface WorkerProfile {
   id: string;
@@ -54,6 +55,7 @@ export default function NewOrderScreen() {
   const [worker, setWorker] = useState<WorkerProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
+  const [generating, setGenerating] = useState(false);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [hasPendingOrder, setHasPendingOrder] = useState(false);
 
@@ -415,6 +417,42 @@ export default function NewOrderScreen() {
     }
   };
 
+  const handleGenerateAI = async () => {
+    if (!problemDescription.trim() && !problemImage) {
+      showAlert("Input Needed", "Please write a brief description or attach an image first so AI can help.", "warning");
+      return;
+    }
+
+    // Get category name for context
+    let categoryName = "General";
+    if (selectedCategory) {
+      const found = categories.find(c => c.id === selectedCategory);
+      if (found) categoryName = found.name;
+    }
+
+    setGenerating(true);
+    try {
+      const result = await generateProblemDescription(
+        problemDescription.trim() || "See attached image",
+        categoryName,
+        problemImage
+      );
+
+      // Build the final description from AI output
+      const aiText = result.title
+        ? `${result.title}\n\n${result.description}`
+        : result.description;
+
+      setProblemDescription(aiText);
+      showAlert("Generated!", "AI has enhanced your problem description.", "success");
+    } catch (error: any) {
+      console.error("AI generation error:", error);
+      showAlert("AI Error", error.message || "Failed to generate description. Please try again.", "error");
+    } finally {
+      setGenerating(false);
+    }
+  };
+
   const getAvatarUrl = (avatarPath: string | null) => {
     if (!avatarPath) return null;
     if (avatarPath.startsWith('http')) return avatarPath;
@@ -666,17 +704,34 @@ export default function NewOrderScreen() {
           </View>
 
           <View style={styles.inputGroup}>
-            <Text style={styles.label}>Problem Description</Text>
+            <View style={styles.headerRow}>
+              <Text style={styles.label}>Problem Description</Text>
+              <TouchableOpacity
+                onPress={handleGenerateAI}
+                disabled={generating || hasPendingOrder}
+                style={styles.aiBtn}
+                activeOpacity={0.7}
+              >
+                {generating ? (
+                  <ActivityIndicator size={14} color={colors.primary} style={{ marginRight: 4 }} />
+                ) : (
+                  <Ionicons name="sparkles" size={14} color={colors.primary} style={{ marginRight: 4 }} />
+                )}
+                <Text style={styles.aiText}>
+                  {generating ? "Generating..." : "Generate with AI"}
+                </Text>
+              </TouchableOpacity>
+            </View>
             <TextInput
               style={[styles.input, styles.textArea]}
               value={problemDescription}
               onChangeText={setProblemDescription}
-              placeholder="Describe the issue (optional)"
+              placeholder="Describe the issue briefly, then tap Generate with AI"
               placeholderTextColor={mode === 'dark' ? colors.textSecondary : "#AAAAAA"}
               multiline
               numberOfLines={4}
               textAlignVertical="top"
-              editable={!hasPendingOrder}
+              editable={!hasPendingOrder && !generating}
             />
           </View>
 
@@ -1192,5 +1247,19 @@ const getStyles = (colors: any, mode: any) => StyleSheet.create({
   inputReadOnly: {
     backgroundColor: mode === 'dark' ? colors.background : "#F0F0F0",
     color: mode === 'dark' ? colors.textSecondary : "#666"
-  }
+  },
+  aiBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 4,
+    paddingHorizontal: 8,
+    borderRadius: 8,
+    backgroundColor: mode === 'dark' ? 'rgba(5, 158, 241, 0.12)' : 'rgba(0, 122, 255, 0.08)',
+  },
+  aiText: {
+    color: colors.primary,
+    fontSize: 12,
+    fontWeight: '700',
+    letterSpacing: -0.2,
+  },
 });

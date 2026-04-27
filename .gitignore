@@ -41,6 +41,7 @@ Thumbs.db
 .env.*
 !.env.example
 *firebase-adminsdk*.json
+google-services.json
 
 # TypeScript build info
 *.tsbuildinfo
